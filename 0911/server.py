@@ -1,0 +1,184 @@
+import argparse
+import socket
+import threading
+from typing import Dict, Optional
+
+
+class ChatServer:
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+        # 수신용 리스닝 소켓
+        self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_sock.bind((self.host, self.port))
+        self.server_sock.listen()
+
+        # 연결 관리
+        self._lock = threading.Lock()
+        # 닉네임 → 소켓
+        self._sock_by_name: Dict[str, socket.socket] = {}
+        # 소켓 → 닉네임
+        self._name_by_sock: Dict[socket.socket, str] = {}
+
+    # ---------- 네트워크 유틸 ----------
+
+    @staticmethod
+    def _send_line(sock: socket.socket, text: str) -> None:
+        data = (text + '\n').encode('utf-8', errors='ignore')
+        sock.sendall(data)
+
+    @staticmethod
+    def _recv_line(file_obj) -> Optional[str]:
+        line = file_obj.readline()
+        if not line:
+            return None
+        return line.rstrip('\n')
+
+    # ---------- 방송/귓속말 ----------
+
+    def _broadcast(self, text: str, exclude: Optional[socket.socket] = None) -> None:
+        # 모든 접속자에게 전송. exclude가 있으면 그 소켓은 제외.
+        with self._lock:
+            sockets = list(self._sock_by_name.values())
+
+        for sock in sockets:
+            if sock is exclude:
+                continue
+            try:
+                self._send_line(sock, text)
+            except OSError:
+                # 송신 실패 소켓은 정리
+                self._cleanup_socket(sock)
+
+    def _whisper(self, to_name: str, text: str, sender: str) -> bool:
+        # 특정 사용자에게 귓속말. 성공 시 True.
+        with self._lock:
+            target = self._sock_by_name.get(to_name)
+
+        if target is None:
+            return False
+
+        try:
+            self._send_line(target, f'(귓속말){sender}> {text}')
+            return True
+        except OSError:
+            self._cleanup_socket(target)
+            return False
+
+    # ---------- 클라이언트 처리 ----------
+
+    def _cleanup_socket(self, sock: socket.socket) -> None:
+        # 소켓 연결 정리 및 사용자 목록에서 제거
+        with self._lock:
+            name = self._name_by_sock.pop(sock, None)
+            if name:
+                self._sock_by_name.pop(name, None)
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+    def _register_name(self, sock: socket.socket, name: str) -> bool:
+        # 닉네임 등록. 중복이면 False
+        if not name or ' ' in name or len(name) > 20:
+            return False
+        with self._lock:
+            if name in self._sock_by_name:
+                return False
+            self._sock_by_name[name] = sock
+            self._name_by_sock[sock] = name
+        return True
+
+    def _handle_client(self, sock: socket.socket, addr) -> None:
+        # 각 클라이언트별 쓰레드 엔트리
+        reader = sock.makefile('r', encoding='utf-8', newline='\n')
+
+        # 1) 첫 줄은 닉네임
+        name = self._recv_line(reader)
+        if name is None or not self._register_name(sock, name):
+            try:
+                self._send_line(sock, 'ERROR 닉네임이 중복되었거나 사용할 수 없습니다.')
+            except OSError:
+                pass
+            self._cleanup_socket(sock)
+            return
+
+        # 입장 알림
+        join_msg = f'{name}님이 입장하셨습니다.'
+        self._broadcast(join_msg)
+        try:
+            self._send_line(sock, '안내: "/종료"로 종료, "/w 대상닉 메시지"는 귓속말입니다.')
+        except OSError:
+            self._cleanup_socket(sock)
+            return
+
+        # 2) 메시지 루프
+        try:
+            while True:
+                line = self._recv_line(reader)
+                if line is None:
+                    break  # 연결 종료
+
+                if line == '/종료':
+                    break
+
+                if line.startswith('/w '):
+                    # 형식: /w 대상닉 메시지
+                    parts = line.split(' ', 2)
+                    if len(parts) < 3:
+                        self._send_line(sock, '안내: 사용법 -> /w 대상닉 메시지')
+                        continue
+                    _, to_name, message = parts
+                    if not self._whisper(to_name, message, name):
+                        self._send_line(sock, f'안내: "{to_name}" 사용자를 찾을 수 없습니다.')
+                    continue
+
+                # 일반 브로드캐스트
+                self._broadcast(f'{name}> {line}', exclude=sock)
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+        finally:
+            # 퇴장 처리
+            self._cleanup_socket(sock)
+            self._broadcast(f'{name}님이 퇴장하셨습니다.')
+
+    # ---------- 서버 구동 ----------
+
+    def serve_forever(self) -> None:
+        print(f'[서버] {self.host}:{self.port} 에서 대기 중...')
+        try:
+            while True:
+                client_sock, addr = self.server_sock.accept()
+                t = threading.Thread(
+                    target=self._handle_client, args=(client_sock, addr), daemon=True
+                )
+                t.start()
+        except KeyboardInterrupt:
+            print('\n[서버] 종료합니다.')
+        finally:
+            with self._lock:
+                sockets = list(self._sock_by_name.values())
+            for s in sockets:
+                self._cleanup_socket(s)
+            try:
+                self.server_sock.close()
+            except OSError:
+                pass
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description='멀티스레드 채팅 서버')
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=5000)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    server = ChatServer(args.host, args.port)
+    server.serve_forever()
+
+
+if __name__ == '__main__':
+    main()
