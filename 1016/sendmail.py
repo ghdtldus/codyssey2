@@ -1,4 +1,4 @@
-import argparse
+import argparse # CLI 인자 파싱 모듈
 import os
 import smtplib
 import ssl
@@ -12,7 +12,7 @@ DEFAULT_SMTP_HOST = 'smtp.gmail.com'
 
 # 기본 방식 포트 번호 (STARTTLS:평문->TLS 전환)
 DEFAULT_SMTP_PORT_STARTTLS = 587
-# SSL 방식 포트 번호 (처음부터 암호화된 연결)
+# SSL 방식 포트 번호 (처음부터 TLS로 시작)
 DEFAULT_SMTP_PORT_SSL = 465
 
 DEFAULT_SENDER = 'ghdtldus03a@gmail.com'
@@ -56,16 +56,17 @@ def send_via_starttls(host: str, port: int, user: str, password: str, msg: Email
 
 # 465/SSL로 SMTP에 접속해 전송한다.
 def send_via_ssl(host: str, port: int, user: str, password: str, msg: EmailMessage) -> None:
+    # TLS 보안 설정을 담는 SSLContext 생성
     context = ssl.create_default_context()
+    # TLS로 암호화된 소켓을 열어 SMTP 대화를 시작
     with smtplib.SMTP_SSL(host, port, context=context, timeout=20) as server:
         server.ehlo()
-        # SMTP 서버에 로그인
         server.login(user, password)
-        # 메일 전송
         server.send_message(msg)
 
 # CLI 인자를 파싱한다.
 def parse_args() -> argparse.Namespace:
+	# description은 -h/--help 출력에 보이는 프로그램 설명문
     parser = argparse.ArgumentParser(
         description='Gmail SMTP로 이메일 전송 (표준 라이브러리만 사용, 첨부 없음)'
     )
@@ -73,22 +74,25 @@ def parse_args() -> argparse.Namespace:
                         help='보내는 사람 이메일(기본: 과제 지정 계정)')
     parser.add_argument('--to', nargs='+', default=[DEFAULT_RECIPIENT],
                         help='받는 사람 이메일(여러 명 가능, 기본: 과제 지정 계정)')
+    # 필수 인자(제목,본문)                    
     parser.add_argument('--subject', required=True, help='메일 제목')
     parser.add_argument('--body', required=True, help='메일 본문 텍스트')
     parser.add_argument('--ssl', action='store_true',
                         help='465(SSL/TLS) 사용. 미지정 시 587(STARTTLS)')
+    # SMTP 서버 호스트 커스터마이징
     parser.add_argument('--host', default=DEFAULT_SMTP_HOST, help='SMTP 호스트 (기본: smtp.gmail.com)')
+    # 위에서 정의한 스펙대로 파싱하고, 결과를 Namespace으로 반환 -> 속성으로 접근 가능
     return parser.parse_args()
 
 
-# 자격 증명을 환경변수 또는 안전 입력으로 확보한다.
-#  사용자: GMAIL_USER 없으면 mail_from 사용
-#  비밀번호: GMAIL_APP_PASS 없으면 getpass()로 입력
-
+# 자격 증명을 환경변수 또는 안전 입력으로 확보
 def resolve_credentials(mail_from: str) -> tuple[str, str]:
+	# 환경변수 GMAIL_USER 를 먼저 찾고, 없으면 mail_from을 그대로 사용자명으로 사용
     user = os.environ.get('GMAIL_USER') or mail_from
+    # 환경변수 GMAIL_APP_PASS  읽기.
     password = os.environ.get('GMAIL_APP_PASS')
     if not password:
+		# 콘솔에서 비밀번호를 마스킹하여 받음.
         password = getpass('앱 비밀번호(16자리, 공백 없이 입력): ')
     return user, password
 
@@ -105,6 +109,7 @@ def main() -> int:
             body=args.body
         )
 
+		# --ssl 플래그가 있으면 465/SMTP_SSL
         if args.ssl:
             send_via_ssl(args.host, DEFAULT_SMTP_PORT_SSL, user, password, msg)
         else:
