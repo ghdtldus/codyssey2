@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from domain.question.router import router as question_router
+from domain.question.question_router import router as question_router
 
 # FastAPI 인스턴스 생성
 app = FastAPI()

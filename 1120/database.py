@@ -1,9 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+# DB연결 설정
 
 # 현재 폴더(./)에 있는 app.db 파일을 SQLite DB로 사용
+# uvicorn 서버를 실행할 때 생성됨
 SQLALCHEMY_DATABASE_URL = 'sqlite:///./app.db'
-
 
 
 # DB 연결(엔진) 만들

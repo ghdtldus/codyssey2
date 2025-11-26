@@ -1,11 +1,8 @@
 from datetime import datetime
-
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
-# 질문(Question) — 답변(Answer) 관계 생성.
 from sqlalchemy.orm import relationship
-
 from database import Base
-
+# DB 테이블 구조 정의(컬럼 + 관계)
 
 class Question(Base):
     # 실제 DB 테이블 이름
