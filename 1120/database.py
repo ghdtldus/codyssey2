@@ -1,5 +1,6 @@
+from contextlib import contextmanager
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
 # DB연결 설정
 
 # 현재 폴더(./)에 있는 app.db 파일을 SQLite DB로 사용
@@ -32,10 +33,23 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-# get_db를 통해 API요청마다 DB 세션 열고, 끝나면 닫는 구조를 제공.
-def get_db():
-    db = SessionLocal()
+# DB 세션을 열고, 사용이 끝나면 자동으로 닫아주는 context manager
+@contextmanager
+def db_session() -> Session:
+    db: Session = SessionLocal()
     try:
+        # 여기서 세션을 호출 측에 넘겨줌
         yield db
     finally:
+        # 예외 발생 여부와 관계 없이 항상 close
         db.close()
+
+
+# FastAPI Depends에서 사용할 의존성 함수
+# contextlib 기반 db_session()을 내부에서 사용
+# 요청이 끝날 때마다 세션이 자동 종료되도록
+def get_db() -> Session:
+    with db_session() as db: #db안에서만 db_session()이 유효
+        # FastAPI의 Depends는 이 함수가 반환하는 값을
+        # 엔드포인트 파라미터로 주입해 준다.
+        yield db
