@@ -13,5 +13,6 @@ uvicorn main:app --reload
 
 API 문서(Swagger): http://127.0.0.1:8000/docs
 프론트엔드 화면: http://127.0.0.1:8000/
-![Question Screen](./question-screen.png)
+![Question Screen](https://raw.githubusercontent.com/ghdtldus/codyssey2/main/1120/question-screen.png)
+
 
