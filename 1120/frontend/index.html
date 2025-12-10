@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>질문 등록</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 640px;
+            margin: 24px auto;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+        }
+
+        form {
+            margin-bottom: 24px;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+
+        label {
+            display: block;
+            margin-top: 8px;
+            margin-bottom: 4px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+
+        button {
+            margin-top: 12px;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+
+        #message {
+            margin-bottom: 16px;
+            color: green;
+        }
+
+        .question-item {
+            border-bottom: 1px solid #eee;
+            padding: 8px 0;
+        }
+
+        .question-date {
+            font-size: 0.8rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+<h1>질문 등록</h1>
+
+<div id="message"></div>
+
+<form id="question-form">
+    <label for="subject">제목</label>
+    <input id="subject" type="text" required>
+
+    <label for="content">내용</label>
+    <textarea id="content" rows="4" required></textarea>
+
+    <button type="submit">등록</button>
+</form>
+
+<h2>질문 목록</h2>
+<div id="question-list"></div>
+
+<script>
+    const form = document.getElementById('question-form');
+    const subjectInput = document.getElementById('subject');
+    const contentInput = document.getElementById('content');
+    const messageBox = document.getElementById('message');
+    const listBox = document.getElementById('question-list');
+
+    // 질문 목록 불러오기
+    async function loadQuestions() {
+        listBox.innerHTML = '로딩 중...';
+
+        try {
+            const res = await fetch('/api/question/');
+            if (!res.ok) {
+                throw new Error('목록 조회 실패: ' + res.status);
+            }
+
+            const data = await res.json(); // List[QuestionSchema]
+            if (!Array.isArray(data) || data.length === 0) {
+                listBox.innerHTML = '<p>등록된 질문이 없습니다.</p>';
+                return;
+            }
+
+            listBox.innerHTML = '';
+            data.forEach(function (q) {
+                const div = document.createElement('div');
+                div.className = 'question-item';
+
+                const title = document.createElement('div');
+                title.textContent = '#' + q.id + ' - ' + q.subject;
+
+                const content = document.createElement('div');
+                content.textContent = q.content;
+
+                const date = document.createElement('div');
+                date.className = 'question-date';
+                date.textContent = '작성일시: ' + q.create_date;
+
+                div.appendChild(title);
+                div.appendChild(content);
+                div.appendChild(date);
+
+                listBox.appendChild(div);
+            });
+        } catch (err) {
+            console.error(err);
+            listBox.innerHTML = '<p>목록을 불러오는 중 오류가 발생했습니다.</p>';
+        }
+    }
+
+    // 질문 등록 이벤트
+    form.addEventListener('submit', async function (event) {
+        event.preventDefault(); // 새로고침 방지
+
+        const subject = subjectInput.value.trim();
+        const content = contentInput.value.trim();
+
+        if (!subject || !content) {
+            messageBox.style.color = 'red';
+            messageBox.textContent = '제목과 내용을 모두 입력해주세요.';
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/question/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    subject: subject,
+                    content: content
+                })
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(function () {
+                    return {};
+                });
+                console.error('등록 실패:', errData);
+                messageBox.style.color = 'red';
+                messageBox.textContent = '등록 실패: ' + res.status;
+                return;
+            }
+
+            const created = await res.json();
+            console.log('생성된 질문:', created);
+
+            messageBox.style.color = 'green';
+            messageBox.textContent = '질문이 등록되었습니다. (id=' + created.id + ')';
+
+            // 폼 초기화
+            subjectInput.value = '';
+            contentInput.value = '';
+
+            // 목록 다시 로딩
+            loadQuestions();
+        } catch (err) {
+            console.error(err);
+            messageBox.style.color = 'red';
+            messageBox.textContent = '요청 중 오류가 발생했습니다.';
+        }
+    });
+
+    // 첫 페이지 로딩 시 목록 요청
+    loadQuestions();
+</script>
+</body>
+</html>

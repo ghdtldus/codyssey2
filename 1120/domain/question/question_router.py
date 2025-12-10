@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel,  Field
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -15,7 +15,7 @@ router = APIRouter(
 )
 
 
-#  Pydantic 스키마
+#  질문 응답 스키마
 class QuestionSchema(BaseModel):
     id: int
     subject: str
@@ -25,10 +25,10 @@ class QuestionSchema(BaseModel):
     class Config:
         orm_mode = True
 
-
-class QuestionCreateSchema(BaseModel):
-    subject: str
-    content: str
+# 질문 생성 요청 스키마
+class QuestionCreate(BaseModel):
+    subject: str= Field(..., min_length=1)
+    content: str= Field(..., min_length=1)
 
 
 #  GET 목록 조회
@@ -43,17 +43,19 @@ def question_list(db: Session = Depends(get_db)) -> List[Question]:
 
 
 #  POST 질문 생성
-@router.post('/', name='create_question', response_model=QuestionSchema)
-def create_question(
-    payload: QuestionCreateSchema,
+@router.post('/', name='create_question', response_model=QuestionSchema,status_code=status.HTTP_201_CREATED)
+def question_create(
+    payload: QuestionCreate,
     db: Session = Depends(get_db),
 ) -> Question:
+    # ORM 객체 생성
     question = Question(
         subject=payload.subject,
         content=payload.content,
         create_date=datetime.utcnow(),
     )
 
+    # DB 저장   
     db.add(question)
     db.commit()
     db.refresh(question)
