@@ -1,4 +1,3 @@
-
 ---
 
 ```markdown
@@ -12,7 +11,3 @@ uvicorn main:app --reload
 
 API 문서(Swagger): http://127.0.0.1:8000/docs
 프론트엔드 화면: http://127.0.0.1:8000/
-
-
-
-
